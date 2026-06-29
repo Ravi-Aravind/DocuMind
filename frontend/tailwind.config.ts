@@ -2,25 +2,31 @@ import type { Config } from "tailwindcss";
 
 const config: Config = {
   content: [
-    "./src/pages/**/*.{js,ts,jsx,tsx,mdx}",
-    "./src/components/**/*.{js,ts,jsx,tsx,mdx}",
-    "./src/app/**/*.{js,ts,jsx,tsx,mdx}",
+    "./src/**/*.{js,ts,jsx,tsx}",
+    "./src/app/**/*.{js,ts,jsx,tsx}",
+    "./src/components/**/*.{js,ts,jsx,tsx}",
   ],
-  darkMode: "class",
   theme: {
     extend: {
-      colors: {
-        background: "var(--background)",
-        foreground: "var(--foreground)",
-        sidebar: "var(--sidebar-bg)",
-        "chat-bg": "var(--chat-bg)",
-        "input-bg": "var(--input-bg)",
-        "border-subtle": "var(--border-subtle)",
-        "accent-soft": "var(--accent)",
-        muted: "var(--text-muted)",
+      fontFamily: {
+        sans: ["Inter", "system-ui", "sans-serif"],
       },
-      animation: {
-        bounce: "bounce 1s infinite",
+      colors: {
+        background: "#FFFFFF",
+        surface: "#F8F8F8",
+        card: "#FFFFFF",
+        border: "#E5E5E5",
+        text: "#111111",
+        textMuted: "#666666",
+        accent: "#000000",
+        hover: "#F2F2F2",
+      },
+      borderRadius: {
+        lg: "12px",
+        xl: "16px",
+      },
+      boxShadow: {
+        subtle: "0 10px 30px rgba(0,0,0,0.06)",
       },
     },
   },

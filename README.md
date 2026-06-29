@@ -1,101 +1,544 @@
 ﻿# DocuMind
 
-## Architecture
+> **An AI-powered Retrieval-Augmented Generation (RAG) platform for document intelligence.**
 
-See [ARCHITECTURE.md](ARCHITECTURE.md) for a detailed description of the system architecture, including the retrieval pipeline (SearchService → HybridRetriever → BGEReranker), dependency injection, configuration, and domain exceptions.
+DocuMind is a full-stack Retrieval-Augmented Generation (RAG) application that enables users to upload documents, automatically ingest and index them into a vector database, and ask natural language questions grounded entirely on the uploaded content.
 
-The QA pipeline uses `SearchService` internally, but `SearchService` has no dependency on LLMs or prompt building.
+The project is being developed with a strong emphasis on **backend architecture, modularity, scalability, and production-ready engineering practices** rather than simply building an AI demo.
 
+---
 
-AI-powered RAG pipeline for querying PDFs, Word documents, and text files with document-grounded and LLM-assisted responses.
+# Current Status
 
-## Backend (FastAPI) Status
+## Backend
 
-**Current scope:** Backend skeleton based on the Academic RAG Platform spec.
+* ✅ FastAPI application
+* ✅ PostgreSQL integration
+* ✅ SQLAlchemy 2.x ORM
+* ✅ Alembic migrations
+* ✅ JWT Authentication
+* ✅ Google OAuth
+* ✅ Document upload
+* ✅ PDF / DOCX / TXT / Markdown parsing
+* ✅ Chunking pipeline
+* ✅ Embedding generation
+* ✅ Qdrant vector indexing
+* ✅ SearchService abstraction
+* ✅ HybridRetriever
+* ✅ BGE Reranker
+* ✅ PromptBuilder abstraction
+* ✅ OpenRouter service abstraction
+* 🚧 Full end-to-end QA validation
+* 🚧 Worker queue
+* 🚧 Hybrid Search
+* 🚧 Multi-provider LLM support
 
-- [x] Create ackend/ layout and pp/ package
-- [x] Configure Settings via Pydantic (ackend/app/config.py)
-- [x] Set up async SQLAlchemy base + session (ackend/app/db/*)
-- [x] Create FastAPI application factory with CORS (ackend/app/main.py)
-- [x] Add API v1 router and a /health/ping endpoint (ackend/app/api/v1/*)
-- [x] Add auth router skeleton with Google OAuth endpoints (ackend/app/api/v1/auth.py)
-- [x] Add core JWT + password utilities (ackend/app/core/security.py)
-- [x] Add basic OAuth helpers and enums (ackend/app/core/oauth.py)
-- [x] Implement core DB models (User, Collection, Document, QASession, QAMessage) with UUID PKs (ackend/app/db/models/*)
-- [x] Set up Alembic config and initial migration (ackend/alembic/*)
-- [x] Add unit tests to validate table creation (ackend/tests/test_models.py)
-- [x] Implement document management API skeleton (ackend/app/api/v1/documents.py)
-- [x] Implement document storage and validation service (ackend/app/services/document_service.py)
-- [x] Implement document parsers for PDF, DOCX, TXT, MD (ackend/app/rag/parsers/*)
-- [x] Add parser tests with sample documents (ackend/tests/test_parsers.py)
-- [x] Implement semantic chunker with overlap (ackend/app/rag/pipeline/chunker.py)
-- [x] Add chunker tests (ackend/tests/test_chunker.py)
-- [ ] Wire Authlib and full OAuth login/redirect flow
+---
 
-- [x] Implement SearchService with BaseRetriever/BaseReranker abstractions
-- [x] Implement HybridRetriever
-- [x] Implement BGEReranker
-- [x] Add search service tests
-- [x] Create ARCHITECTURE.md documenting retrieval lifecycle
+# Architecture
 
-- [ ] Implement /auth/me with real user model + DB
-- [ ] Implement full document ingestion and RAG pipeline services
-- [ ] Implement QA endpoints (qa.py) wired to RAG pipeline
-- [ ] Implement collections management (collections.py)
-- [ ] Integrate Qdrant + hybrid search + reranking
+```
+                User
+                 │
+                 ▼
+         FastAPI REST API
+                 │
+      ┌──────────┴──────────┐
+      │                     │
+ Authentication      Document Upload
+      │                     │
+      ▼                     ▼
+ PostgreSQL          Local File Storage
+                            │
+                            ▼
+                      Document Parser
+                            │
+                            ▼
+                         Chunker
+                            │
+                            ▼
+                      Embedding Model
+                            │
+                            ▼
+                        Qdrant
+                            │
+                            ▼
+                    SearchService
+                     /          \
+        HybridRetriever     BGEReranker
+                     \          /
+                      Retrieved Chunks
+                            │
+                            ▼
+                     PromptBuilder
+                            │
+                            ▼
+                    OpenRouterService
+                            │
+                            ▼
+                      Generated Answer
+```
 
-## Document Parsing & Chunking
+---
 
-Parsers live under ackend/app/rag/parsers/ and produce ParsedDocument/ParsedPage objects.
+# Project Structure
 
-Chunking lives under ackend/app/rag/pipeline/chunker.py.
+```
+backend/
+│
+├── app/
+│   ├── api/
+│   ├── config.py
+│   ├── db/
+│   │     ├── models/
+│   │     ├── base.py
+│   │     └── session.py
+│   │
+│   ├── rag/
+│   │     ├── parsers/
+│   │     ├── retrieval/
+│   │     ├── pipeline/
+│   │     ├── embeddings.py
+│   │     └── qdrant_client.py
+│   │
+│   ├── prompts/
+│   ├── services/
+│   ├── schemas/
+│   └── llm/
+│
+├── alembic/
+│
+└── tests/
+```
 
-### Chunking Rules
+---
 
-- Default max tokens per chunk: 512.
-- Overlap between chunks: 64 tokens.
-- Chunks never cross page boundaries.
-- Page number and section title from ParsedPage are preserved on each Chunk.
-- Tiny trailing fragments smaller than the overlap are merged into the previous chunk to avoid very small chunks.
+# Technology Stack
 
-### Chunk Data Structure
+## Backend
 
-- Chunk
-  - 	ext: chunk text content.
-  - page: page number from the source ParsedPage.
-  - section: section title from the source ParsedPage (or None).
-  - chunk_index: global index across the document.
+* Python 3.12+
+* FastAPI
+* SQLAlchemy 2.x
+* Alembic
+* Pydantic v2
+* AsyncPG
 
-Tests for chunking behavior are in ackend/tests/test_chunker.py.
+## AI / RAG
 
-## Document Management API
+* Sentence Transformers
+* BAAI/bge-large-en-v1.5
+* BAAI/bge-reranker-large
+* Qdrant
+* OpenRouter
 
-Document endpoints live under ackend/app/api/v1/documents.py and are mounted at /api/v1/documents.
+## Database
 
-(See previous section in this README for full details.)
+* PostgreSQL
 
-## Migrations (Alembic)
+## Frontend
 
-`ash
-cd backend
-alembic upgrade head
-`
+* Next.js
+* React
+* TypeScript
 
-## Testing
+---
 
-`ash
-cd backend
-pytest
-`
+# Environment Variables
 
-## Running the Backend
+Create a `.env` file in the **project root**.
 
-`ash
-cd backend
+```
+DocuMind/
+│
+├── .env
+├── backend/
+└── frontend/
+```
+
+---
+
+## Application
+
+```env
+APP_NAME=DocuMind Backend
+ENVIRONMENT=development
+```
+
+---
+
+## JWT
+
+Generate two secure random strings.
+
+Example:
+
+```powershell
+python -c "import secrets; print(secrets.token_hex(32))"
+```
+
+```
+SECRET_KEY=your_secret_key
+REFRESH_SECRET_KEY=your_refresh_secret_key
+```
+
+---
+
+## PostgreSQL
+
+```
+DB_USER=postgres
+DB_PASSWORD=your_password
+DB_HOST=localhost
+DB_PORT=5432
+DB_NAME=documind
+```
+
+### Notes
+
+Create the database first.
+
+```sql
+CREATE DATABASE documind;
+```
+
+If your password contains special characters (`@`, `#`, `%`, etc.), the application automatically handles URL construction.
+
+---
+
+## Google OAuth
+
+Create OAuth credentials from Google Cloud Console.
+
+```
+GOOGLE_CLIENT_ID=
+GOOGLE_CLIENT_SECRET=
+GOOGLE_REDIRECT_URI=http://localhost:8000/api/v1/auth/google/callback
+```
+
+---
+
+## Qdrant
+
+Install and run Qdrant locally.
+
+```
+QDRANT_URL=http://localhost:6333
+QDRANT_API_KEY=
+QDRANT_COLLECTION_NAME=documents_bge_large
+```
+
+No API key is required for local Docker deployments.
+
+---
+
+## Embedding Model
+
+```
+EMBEDDING_MODEL_NAME=BAAI/bge-large-en-v1.5
+```
+
+---
+
+## Reranker
+
+```
+RERANKER_MODEL_NAME=BAAI/bge-reranker-large
+```
+
+---
+
+## Retrieval
+
+```
+VECTOR_TOP_K=10
+BM25_TOP_K=10
+RERANK_TOP_K=5
+RRF_K=60
+SEARCH_TIMEOUT=30
+```
+
+---
+
+## OpenRouter
+
+Create an account at OpenRouter.
+
+Generate an API Key.
+
+```
+OPENROUTER_API_KEY=sk-or-v1-xxxxxxxx
+OPENROUTER_ENDPOINT=https://openrouter.ai/api/v1/chat/completions
+OPENROUTER_MODEL=anthropic/claude-3.5-haiku
+```
+
+---
+
+## LLM
+
+```
+LLM_TIMEOUT=60
+LLM_TEMPERATURE=0.1
+```
+
+---
+
+# Installation
+
+Clone the repository.
+
+```bash
+git clone <repo-url>
+cd DocuMind
+```
+
+---
+
+## Backend
+
+Create a virtual environment.
+
+```bash
 python -m venv .venv
-source .venv/bin/activate  # Windows: .venv\\Scripts\\activate
-pip install -r requirements.txt
-uvicorn backend.app.main:app --reload
-`
+```
 
-This README will be updated periodically as backend milestones are completed.
+Activate it.
+
+Windows
+
+```bash
+.venv\Scripts\activate
+```
+
+Linux/macOS
+
+```bash
+source .venv/bin/activate
+```
+
+Install dependencies.
+
+```bash
+pip install -r requirements.txt
+```
+
+---
+
+## PostgreSQL
+
+Create the database.
+
+```sql
+CREATE DATABASE documind;
+```
+
+---
+
+## Run Alembic
+
+Generate tables.
+
+```bash
+alembic upgrade head
+```
+
+Verify.
+
+```sql
+SELECT tablename
+FROM pg_tables
+WHERE schemaname='public';
+```
+
+Expected:
+
+```
+users
+collections
+documents
+qa_sessions
+qa_messages
+session_documents
+alembic_version
+```
+
+---
+
+## Qdrant
+
+Run with Docker.
+
+```bash
+docker run -p 6333:6333 qdrant/qdrant
+```
+
+Verify.
+
+```
+http://localhost:6333/dashboard
+```
+
+---
+
+# Running the Backend
+
+Start FastAPI.
+
+```bash
+uvicorn backend.app.main:app --reload
+```
+
+Swagger UI:
+
+```
+http://localhost:8000/docs
+```
+
+OpenAPI:
+
+```
+http://localhost:8000/openapi.json
+```
+
+---
+
+# Expected Workflow
+
+## Upload
+
+```
+POST /documents/upload
+```
+
+↓
+
+File stored locally
+
+↓
+
+Parser
+
+↓
+
+Chunker
+
+↓
+
+Embedding
+
+↓
+
+Qdrant Index
+
+↓
+
+Status = READY
+
+---
+
+## Question Answering
+
+```
+POST /qa/ask
+```
+
+↓
+
+SearchService
+
+↓
+
+HybridRetriever
+
+↓
+
+BGEReranker
+
+↓
+
+PromptBuilder
+
+↓
+
+OpenRouter
+
+↓
+
+Grounded Answer
+
+---
+
+# Testing
+
+Run all tests.
+
+```bash
+pytest
+```
+
+Run a specific module.
+
+```bash
+pytest backend/tests/test_search_service.py
+```
+
+---
+
+# Current Backend Components
+
+| Component          | Status                 |
+| ------------------ | ---------------------- |
+| Authentication     | ✅                      |
+| PostgreSQL         | ✅                      |
+| Alembic            | ✅                      |
+| Upload             | ✅                      |
+| Parsing            | ✅                      |
+| Chunking           | ✅                      |
+| Embeddings         | ✅                      |
+| Qdrant             | ✅                      |
+| SearchService      | ✅                      |
+| HybridRetriever    | ✅                      |
+| BGE Reranker       | ✅                      |
+| PromptBuilder      | ✅                      |
+| OpenRouter Service | ✅                      |
+| QA Pipeline        | 🚧 Integration Testing |
+| Background Worker  | 🚧                     |
+| Hybrid Search      | 🚧                     |
+| Multi-Provider LLM | 🚧                     |
+
+---
+
+# Roadmap
+
+## Phase 1 — Backend Foundation ✅
+
+* FastAPI
+* PostgreSQL
+* Alembic
+* Authentication
+* Upload pipeline
+* SearchService architecture
+
+## Phase 2 — RAG Integration 🚧
+
+* End-to-end ingestion
+* End-to-end QA
+* Citation verification
+* Integration testing
+
+## Phase 3 — Production Features
+
+* Celery/RQ workers
+* Redis
+* S3/Blob Storage
+* Hybrid Search
+* Metadata Filtering
+* Observability
+* Metrics
+* Monitoring
+
+---
+
+# License
+
+This project is intended for educational, research, and portfolio purposes.

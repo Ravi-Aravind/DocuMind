@@ -1,50 +1,23 @@
-"""Hybrid (vector) retriever backed by Qdrant.
-
-Currently implements dense vector search via Qdrant's COSINE similarity.
-A future sparse / BM25 leg can be added without changing the public interface.
-"""
-
 from __future__ import annotations
 
-import logging
-from typing import Optional
+from typing import List, Optional
 from uuid import UUID
 
 from qdrant_client.http import models as qmodels
 
 from backend.app.config import settings
+from backend.app.rag.retrieval.base import BaseRetriever, RetrievedChunk
 from backend.app.rag.embeddings import embed_texts
-from backend.app.rag.qdrant_client import get_qdrant_client
-from backend.app.rag.retrieval.base import (
-    BaseRetriever,
-    RetrieverUnavailableError,
-    RetrievedChunk,
-    SearchTimeoutError,
-)
-
-logger = logging.getLogger(__name__)
 
 
 class HybridRetriever(BaseRetriever):
-    """Retriever that performs dense vector search against a Qdrant collection.
+    """Hybrid retriever that queries Qdrant with metadata-aware filters."""
 
-    The ``HybridRetriever`` name signals the intended architecture – a future
-    enhancement will add a sparse (BM25) leg with reciprocal-rank fusion.
-    For now, only the dense leg is active.
-    """
+    def __init__(self) -> None:
+        from backend.app.rag.qdrant_client import get_qdrant_client  # avoid circular import
 
-    def __init__(
-        self,
-        collection_name: str | None = None,
-        oversample_factor: int = 2,
-    ) -> None:
-        self._collection_name = collection_name or settings.qdrant_collection_name
-        self._oversample_factor = oversample_factor
-        self._client = get_qdrant_client()
-
-    # ------------------------------------------------------------------
-    # Public API
-    # ------------------------------------------------------------------
+        self.client = get_qdrant_client()
+        self.collection_name = settings.qdrant_collection_name
 
     async def retrieve(
         self,
@@ -52,78 +25,26 @@ class HybridRetriever(BaseRetriever):
         query: str,
         user_id: UUID | None = None,
         collection_id: UUID | None = None,
-        document_ids: list[UUID] | None = None,
+        document_ids: List[UUID] | None = None,
         top_k: int = 5,
-    ) -> list[RetrievedChunk]:
-        """Embed the query and search Qdrant with optional payload filters."""
-        query_vector = embed_texts([query])[0]
+    ) -> List[RetrievedChunk]:
+        if not query.strip():
+            return []
 
-        search_filter = self._build_filter(
-            user_id=user_id,
-            collection_id=collection_id,
-            document_ids=document_ids,
-        )
+        if user_id is None:
+            # We require user_id to enforce ownership.
+            return []
 
-        try:
-            search_result = self._client.search(
-                collection_name=self._collection_name,
-                query_vector=query_vector,
-                limit=top_k * self._oversample_factor,
-                query_filter=search_filter,
-                with_payload=True,
-                timeout=settings.search_timeout,
+        # Build filter
+        must_conditions: List[qmodels.Condition] = [
+            qmodels.FieldCondition(
+                key="owner_id",
+                match=qmodels.MatchValue(value=str(user_id)),
             )
-        except Exception as exc:
-            logger.error("Qdrant search failed: %s", exc)
-            raise RetrieverUnavailableError(
-                f"Vector store search failed: {exc}"
-            ) from exc
-
-        chunks: list[RetrievedChunk] = []
-        for point in search_result:
-            payload = point.payload or {}
-            chunks.append(
-                RetrievedChunk(
-                    text=payload.get("text", ""),
-                    page=int(payload.get("page", 0)),
-                    section=payload.get("section"),
-                    score=float(point.score),
-                    document_id=str(payload.get("document_id", "")),
-                    chunk_index=payload.get("chunk_index"),
-                )
-            )
-        return chunks
-
-    # ------------------------------------------------------------------
-    # Internal helpers
-    # ------------------------------------------------------------------
-
-    def _build_filter(
-        self,
-        user_id: UUID | None,
-        collection_id: UUID | None,
-        document_ids: list[UUID] | None,
-    ) -> qmodels.Filter | None:
-        """Build an optional Qdrant ``Filter`` from scoping parameters.
-
-        .. note::
-
-            The ingestion pipeline does **not** currently store ``owner_id``
-            in the Qdrant payload, so ``user_id`` filtering will be a no-op
-            until that field is added at upsert time.
-        """
-        conditions: list[qmodels.FieldCondition | qmodels.Filter] = []
-
-        if user_id is not None:
-            conditions.append(
-                qmodels.FieldCondition(
-                    key="owner_id",
-                    match=qmodels.MatchValue(value=str(user_id)),
-                )
-            )
+        ]
 
         if collection_id is not None:
-            conditions.append(
+            must_conditions.append(
                 qmodels.FieldCondition(
                     key="collection_id",
                     match=qmodels.MatchValue(value=str(collection_id)),
@@ -131,14 +52,49 @@ class HybridRetriever(BaseRetriever):
             )
 
         if document_ids:
-            conditions.append(
+            # Restrict to specific documents owned by user
+            must_conditions.append(
                 qmodels.FieldCondition(
                     key="document_id",
-                    match=qmodels.MatchAny(any=[str(did) for did in document_ids]),
+                    match=qmodels.MatchAny(
+                        any=[str(did) for did in document_ids],
+                    ),
                 )
             )
 
-        if not conditions:
-            return None
+        query_filter = qmodels.Filter(must=must_conditions)
 
-        return qmodels.Filter(must=conditions)
+        # Embed query
+        vectors = embed_texts([query])
+        query_vector = vectors[0]
+
+        search_result = self.client.search(
+            collection_name=self.collection_name,
+            query_vector=query_vector,
+            query_filter=query_filter,
+            limit=top_k,
+            with_payload=True,
+        )
+
+        chunks: List[RetrievedChunk] = []
+        for point in search_result:
+            payload = point.payload or {}
+            text = payload.get("text", "")
+            if not text:
+                continue
+
+            chunks.append(
+                RetrievedChunk(
+                    text=text,
+                    page=int(payload.get("page", 0) or 0),
+                    section=payload.get("section"),
+                    score=float(point.score or 0.0),
+                    document_id=str(payload.get("document_id")),
+                    document_title=payload.get("document_title"),
+                    chunk_index=int(payload.get("chunk_index", 0) or 0),
+                )
+            )
+
+        # Logging: retrieval latency is handled upstream (SearchService),
+        # but we can log basic filter usage here if needed.
+        return chunks

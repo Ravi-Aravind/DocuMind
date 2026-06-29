@@ -1,100 +1,185 @@
 ﻿from functools import lru_cache
+from pathlib import Path
 
-from pydantic import BaseSettings, Field
+from pydantic import Field
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+
+print(PROJECT_ROOT)
 
 class Settings(BaseSettings):
-    """Application settings loaded from environment variables.
+    model_config = SettingsConfigDict(
+        env_file=PROJECT_ROOT / ".env",
+        case_sensitive=True,
+        extra="ignore", 
+    )
 
-    Central configuration object for the DocuMind backend.
-    """
-
-    app_name: str = Field("DocuMind Backend", env="APP_NAME")
-    environment: str = Field("development", env="ENVIRONMENT")
+    # ------------------------------------------------------------------
+    # Application
+    # ------------------------------------------------------------------
+    app_name: str = Field(default="DocuMind Backend", alias="APP_NAME")
+    environment: str = Field(default="development", alias="ENVIRONMENT")
     api_v1_prefix: str = "/api/v1"
 
+    # ------------------------------------------------------------------
     # Security / JWT
-    secret_key: str = Field("dev-secret-key", env="SECRET_KEY")
-    refresh_secret_key: str = Field("dev-refresh-secret-key", env="REFRESH_SECRET_KEY")
+    # ------------------------------------------------------------------
+    secret_key: str = Field(default="dev-secret-key", alias="SECRET_KEY")
+    refresh_secret_key: str = Field(
+        default="dev-refresh-secret-key",
+        alias="REFRESH_SECRET_KEY",
+    )
 
-    # OAuth (Google)
-    google_client_id: str = Field("", env="GOOGLE_CLIENT_ID")
-    google_client_secret: str = Field("", env="GOOGLE_CLIENT_SECRET")
+    # ------------------------------------------------------------------
+    # Google OAuth
+    # ------------------------------------------------------------------
+    google_client_id: str = Field(default="", alias="GOOGLE_CLIENT_ID")
+    google_client_secret: str = Field(default="", alias="GOOGLE_CLIENT_SECRET")
     google_redirect_uri: str = Field(
-        "http://localhost:8000/api/v1/auth/google/callback",
-        env="GOOGLE_REDIRECT_URI",
+        default="http://localhost:8000/api/v1/auth/google/callback",
+        alias="GOOGLE_REDIRECT_URI",
     )
 
-    # Database connection pieces
-    db_user: str = Field("documind", env="DB_USER")
-    db_password: str = Field("documind", env="DB_PASSWORD")
-    db_host: str = Field("localhost", env="DB_HOST")
-    db_port: str = Field("5432", env="DB_PORT")
-    db_name: str = Field("documind", env="DB_NAME")
+    # ------------------------------------------------------------------
+    # Database
+    # ------------------------------------------------------------------
+    db_user: str = Field(default="documind", alias="DB_USER")
+    db_password: str = Field(default="documind", alias="DB_PASSWORD")
+    db_host: str = Field(default="localhost", alias="DB_HOST")
+    db_port: str = Field(default="5432", alias="DB_PORT")
+    db_name: str = Field(default="documind", alias="DB_NAME")
 
-    # Full database URL for async app (asyncpg)
-    database_url: str = Field(
-        "",
-        env="DATABASE_URL",
+    database_url: str = Field(default="", alias="DATABASE_URL")
+
+    # ------------------------------------------------------------------
+    # Frontend / CORS
+    # ------------------------------------------------------------------
+    frontend_origin: str = Field(
+        default="http://localhost:5173",
+        alias="FRONTEND_ORIGIN",
     )
 
-    # CORS / frontend
-    frontend_origin: str = Field("http://localhost:5173", env="FRONTEND_ORIGIN")
+    # ------------------------------------------------------------------
+    # Qdrant
+    # ------------------------------------------------------------------
+    qdrant_url: str = Field(
+        default="http://localhost:6333",
+        alias="QDRANT_URL",
+    )
 
-    # ------------------------------------------------------------------
-    # Retrieval (Qdrant / vector store)
-    # ------------------------------------------------------------------
-    qdrant_url: str = Field("http://localhost:6333", env="QDRANT_URL")
-    qdrant_api_key: str = Field("", env="QDRANT_API_KEY")
+    qdrant_api_key: str = Field(
+        default="",
+        alias="QDRANT_API_KEY",
+    )
+
     qdrant_collection_name: str = Field(
-        "documents_bge_large", env="QDRANT_COLLECTION_NAME"
+        default="documents_bge_large",
+        alias="QDRANT_COLLECTION_NAME",
     )
 
-    # Embedding model used for query encoding
+    # ------------------------------------------------------------------
+    # Embeddings / Retrieval
+    # ------------------------------------------------------------------
     embedding_model_name: str = Field(
-        "BAAI/bge-large-en-v1.5", env="EMBEDDING_MODEL_NAME"
+        default="BAAI/bge-large-en-v1.5",
+        alias="EMBEDDING_MODEL_NAME",
     )
 
-    # Reranker model
     reranker_model_name: str = Field(
-        "BAAI/bge-reranker-large", env="RERANKER_MODEL_NAME"
+        default="BAAI/bge-reranker-large",
+        alias="RERANKER_MODEL_NAME",
     )
 
-    # Search parameters
-    vector_top_k: int = Field(10, ge=1, le=100, env="VECTOR_TOP_K")
-    bm25_top_k: int = Field(10, ge=1, le=100, env="BM25_TOP_K")
-    rerank_top_k: int = Field(5, ge=1, le=50, env="RERANK_TOP_K")
-    rrf_k: int = Field(60, ge=1, env="RRF_K")
-    search_timeout: int = Field(30, ge=1, env="SEARCH_TIMEOUT")
+    vector_top_k: int = Field(
+        default=10,
+        ge=1,
+        le=100,
+        alias="VECTOR_TOP_K",
+    )
 
+    bm25_top_k: int = Field(
+        default=10,
+        ge=1,
+        le=100,
+        alias="BM25_TOP_K",
+    )
 
+    rerank_top_k: int = Field(
+        default=5,
+        ge=1,
+        le=50,
+        alias="RERANK_TOP_K",
+    )
 
-    class Config:
-        env_file = ".env"
-        case_sensitive = True
+    rrf_k: int = Field(
+        default=60,
+        ge=1,
+        alias="RRF_K",
+    )
 
+    search_timeout: int = Field(
+        default=30,
+        ge=1,
+        alias="SEARCH_TIMEOUT",
+    )
+
+    # ------------------------------------------------------------------
+    # OpenRouter
+    # ------------------------------------------------------------------
+    openrouter_api_key: str = Field(
+        default="",
+        alias="OPENROUTER_API_KEY",
+    )
+
+    openrouter_endpoint: str = Field(
+        default="https://openrouter.ai/api/v1/chat/completions",
+        alias="OPENROUTER_ENDPOINT",
+    )
+
+    openrouter_model: str = Field(
+        default="anthropic/claude-3.5-haiku",
+        alias="OPENROUTER_MODEL",
+    )
+
+    llm_timeout: float = Field(
+        default=60.0,
+        alias="LLM_TIMEOUT",
+    )
+
+    llm_temperature: float = Field(
+        default=0.1,
+        alias="LLM_TEMPERATURE",
+    )
+
+    # ------------------------------------------------------------------
+    # Computed database URLs
+    # ------------------------------------------------------------------
     @property
     def async_db_url(self) -> str:
-        """Async DB URL for SQLAlchemy+asyncpg."""
+        """Async SQLAlchemy database URL."""
         if self.database_url:
             return self.database_url
+
         return (
-            f"postgresql+asyncpg://{self.db_user}:{self.db_password}"
+            f"postgresql+asyncpg://"
+            f"{self.db_user}:{self.db_password}"
             f"@{self.db_host}:{self.db_port}/{self.db_name}"
         )
 
     @property
     def sync_db_url(self) -> str:
-        """Sync DB URL for Alembic/psycopg2."""
+        """Synchronous database URL for Alembic."""
         return (
-            f"postgresql://{self.db_user}:{self.db_password}"
+            f"postgresql://"
+            f"{self.db_user}:{self.db_password}"
             f"@{self.db_host}:{self.db_port}/{self.db_name}"
         )
 
 
 @lru_cache
-def get_settings() -> "Settings":
-    """Return cached settings instance."""
+def get_settings() -> Settings:
+    """Return cached application settings."""
     return Settings()
 
 

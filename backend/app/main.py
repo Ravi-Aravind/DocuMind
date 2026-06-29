@@ -1,6 +1,5 @@
 ﻿from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-
 from backend.app.api.v1.router import api_router
 from backend.app.config import settings
 

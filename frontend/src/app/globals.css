@@ -1,51 +1,97 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import url("https://rsms.me/inter/inter.css");
 
 :root {
-  --background: #0d0d0d;
-  --foreground: #ececec;
-  --sidebar-bg: #0d0d0d;
-  --chat-bg: #1a1a1a;
-  --input-bg: #2a2a2a;
-  --border-subtle: #2a2a2a;
-  --border-strong: #3a3a3a;
-  --accent: #4f83f1;
-  --accent-hover: #3b6fd4;
-  --text-muted: #8a8a8a;
-  --text-secondary: #b0b0b0;
-  --hover-bg: #1f1f1f;
-  --active-bg: #252525;
-  --sidebar-width: 260px;
+  --background: #ffffff;
+  --surface: #f8f8f8;
+  --card: #ffffff;
+  --border: #e5e5e5;
+  --text: #111111;
+  --text-muted: #666666;
+  --accent: #000000;
+  --hover: #f2f2f2;
+
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+
+  --shadow-subtle: 0 10px 30px rgba(0, 0, 0, 0.06);
 }
 
-*, *::before, *::after {
+/* Dark mode variables */
+[data-theme="dark"] {
+  --background: #050505;
+  --surface: #111111;
+  --card: #181818;
+  --border: #2a2a2a;
+  --text: #fefefe;
+  --text-muted: #a3a3a3;
+  --accent: #ffffff;
+  --hover: #222222;
+}
+
+html,
+body {
+  padding: 0;
+  margin: 0;
+  font-family: "Inter", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+    sans-serif;
+  background-color: var(--background);
+  color: var(--text);
+}
+
+*,
+*::before,
+*::after {
   box-sizing: border-box;
 }
 
-html, body {
-  margin: 0;
-  padding: 0;
-  height: 100%;
-  background-color: var(--background);
-  color: var(--foreground);
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+::selection {
+  background: rgba(0, 0, 0, 0.08);
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
 }
 
 /* Scrollbar */
-::-webkit-scrollbar { width: 4px; }
-::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: #333; border-radius: 4px; }
-::-webkit-scrollbar-thumb:hover { background: #444; }
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
 
-/* Utility classes */
-.bg-background { background-color: var(--background); }
-.bg-sidebar { background-color: var(--sidebar-bg); }
-.bg-chat { background-color: var(--chat-bg); }
-.bg-input { background-color: var(--input-bg); }
-.text-foreground { color: var(--foreground); }
-.text-muted { color: var(--text-muted); }
-.text-secondary { color: var(--text-secondary); }
-.border-subtle { border-color: var(--border-subtle); }
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #d4d4d4;
+  border-radius: 999px;
+}
+
+/* General utility classes */
+.page-shell {
+  min-height: 100vh;
+  background-color: var(--background);
+  color: var(--text);
+}
+
+.card {
+  background-color: var(--card);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-subtle);
+}
+
+.surface {
+  background-color: var(--surface);
+}
+
+.text-muted {
+  color: var(--text-muted);
+}
+
+/* Focus outlines for accessibility */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}

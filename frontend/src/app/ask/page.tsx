@@ -1,6 +1,11 @@
 "use client";
 
-import { useState, useRef, useEffect, useCallback } from "react";
+import {
+  useState,
+  useRef,
+  useEffect,
+  useCallback,
+} from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/context/auth-context";
 import { apiClient } from "@/lib/api";
@@ -27,13 +32,15 @@ type ChatMessage = {
 
 export default function AskPage() {
   const router = useRouter();
-  const { user, loading } = useAuth();
+  const { user, loading, authenticated } = useAuth();
 
   const [question, setQuestion] = useState("");
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isAsking, setIsAsking] = useState(false);
   const [askError, setAskError] = useState<string | null>(null);
-  const [selectedCollectionId, setSelectedCollectionId] = useState<string | null>(null);
+  const [selectedCollectionId, setSelectedCollectionId] = useState<string | null>(
+    null
+  );
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadStatus, setUploadStatus] = useState<string | null>(null);
@@ -44,14 +51,27 @@ export default function AskPage() {
   const { data: collections = [] } = useCollections();
   const { data: sessions = [], refetch: refetchSessions } = useQASessions();
 
-  // Auth guard
+  // Protected route guard: redirect unauthenticated users
   useEffect(() => {
-    if (!loading && !user) {
+    if (!loading && !authenticated) {
       router.replace("/login");
     }
-  }, [user, loading, router]);
+  }, [loading, authenticated, router]);
 
-  // Scroll to latest message
+  // While auth is loading, show a loading shell
+  if (loading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-[var(--background)] px-4">
+        <div className="card px-4 py-3">
+          <p className="text-sm text-[var(--text-muted)]">
+            Loading your workspace…
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  // Scroll to latest message when messages change
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, isAsking]);
@@ -69,23 +89,29 @@ export default function AskPage() {
     try {
       const { data } = await apiClient.post("/qa/ask", {
         question: q,
-        session_id: activeSessionId ?? undefined,
-        collection_id: selectedCollectionId ?? undefined,
+        // Backend expects collection_name; we pass selectedCollectionId here.
+        collection_name: selectedCollectionId ?? undefined,
       });
+
+      const sources = Array.isArray(data.sources) ? data.sources : [];
+      const citations: SourceCitation[] = sources.map((s: any) => ({
+        document_id: s.document_id,
+        chunk_text: s.snippet,
+        score: s.score,
+        page: s.page,
+        section: s.section,
+        title: s.document_title,
+      }));
 
       setMessages((prev) => [
         ...prev,
         {
           role: "assistant",
           content: data.answer ?? "",
-          citations: Array.isArray(data.citations) ? data.citations : [],
+          citations,
           confidence: data.confidence,
         },
       ]);
-
-      if (data.session_id && !activeSessionId) {
-        setActiveSessionId(data.session_id);
-      }
 
       refetchSessions();
     } catch (err: unknown) {
@@ -95,7 +121,7 @@ export default function AskPage() {
     } finally {
       setIsAsking(false);
     }
-  }, [question, isAsking, activeSessionId, selectedCollectionId, refetchSessions]);
+  }, [question, isAsking, selectedCollectionId, refetchSessions]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -123,456 +149,327 @@ export default function AskPage() {
       setUploadStatus("Processing...");
       let attempts = 0;
 
+      const docId = data.id;
       const poll = setInterval(async () => {
         attempts++;
         try {
-          const res = await apiClient.get("/documents/" + data.id + "/status");
+          const res = await apiClient.get(`/documents/${docId}/status`);
           const s = res.data;
           if (s.status === "ready") {
             clearInterval(poll);
-            setUploadStatus("Ready: " + file.name);
+            setUploadStatus(`Ready: ${file.name}`);
             setTimeout(() => setUploadStatus(null), 3000);
+            setIsUploading(false);
           } else if (s.status === "failed") {
             clearInterval(poll);
-            setUploadStatus("Failed: " + (s.error_message ?? "unknown error"));
+            setUploadStatus(`Failed: ${s.error_message ?? "unknown error"}`);
+            setIsUploading(false);
           } else if (attempts > 30) {
             clearInterval(poll);
             setUploadStatus("Still processing...");
+            setIsUploading(false);
           }
         } catch {
           clearInterval(poll);
           setUploadStatus("Status check failed.");
+          setIsUploading(false);
         }
       }, 2000);
     } catch {
       setUploadStatus("Upload failed.");
       setIsUploading(false);
     }
+  };
 
-    if (fileInputRef.current) {
-      fileInputRef.current.value = "";
+  // -- Sessions ---------------------------------------------------------
+  const handleSelectSession = async (sessionId: string | null) => {
+    if (!sessionId) {
+      setActiveSessionId(null);
+      setMessages([]);
+      return;
     }
-  };
 
-  // -- Session helpers --------------------------------------------------
-  const handleNewChat = () => {
-    setMessages([]);
-    setActiveSessionId(null);
-    setAskError(null);
-  };
-
-  const handleSelectSession = async (session: QASession) => {
-    setActiveSessionId(session.id);
-    setMessages([]);
+    setActiveSessionId(sessionId);
     try {
-      const { data } = await apiClient.get("/qa/sessions/" + session.id);
-      const loaded: ChatMessage[] = (data.messages ?? []).map(
-        (m: { role: string; content: string; sources?: SourceCitation[]; confidence?: string }) => ({
-          role: m.role === "user" ? "user" : "assistant",
-          content: m.content,
-          citations: m.role !== "user" ? (m.sources ?? []) : undefined,
-          confidence: m.confidence,
-        })
-      );
-      setMessages(loaded);
-    } catch {
-      // session history unavailable, start fresh in this session
+      const { data } = await apiClient.get(`/qa/sessions/${sessionId}`);
+      const newMessages: ChatMessage[] = Array.isArray(data.messages)
+        ? data.messages.map((m: any) => ({
+            role: m.role,
+            content: m.content,
+            // Session messages currently do not include citations field
+            citations: [],
+            confidence: m.confidence,
+          }))
+        : [];
+      setMessages(newMessages);
+    } catch (err) {
+      console.error(err);
     }
   };
-
-  const handleSignOut = () => {
-    localStorage.removeItem("documind_access_token");
-    window.location.replace("/login");
-  };
-
-  // -- Loading / unauthed states ----------------------------------------
-  if (loading) {
-    return (
-      <div
-        className="flex min-h-screen items-center justify-center"
-        style={{ background: "var(--background)" }}
-      >
-        <div className="h-6 w-6 animate-spin rounded-full border-2 border-indigo-600 border-t-transparent" />
-      </div>
-    );
-  }
-
-  if (!user) return null;
 
   // -- Render -----------------------------------------------------------
+
   return (
-    <div
-      className="flex h-screen overflow-hidden"
-      style={{ background: "var(--background)", color: "var(--foreground)" }}
-    >
-      {/* -- Sidebar -- */}
-      <aside
-        className="flex w-60 flex-shrink-0 flex-col"
-        style={{
-          borderRight: "1px solid var(--border-subtle)",
-          background: "var(--accent-soft)",
-        }}
-      >
-        {/* Logo + New chat */}
-        <div className="flex items-center justify-between px-4 py-4">
-          <span className="text-sm font-semibold tracking-tight">DocuMind</span>
-          <Button variant="ghost" size="sm" onClick={handleNewChat}>
-            + New
-          </Button>
-        </div>
-
-        {/* Upload */}
-        <div className="px-3 pb-3">
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept=".pdf,.docx,.txt,.md"
-            className="hidden"
-            onChange={handleUpload}
-          />
-          <Button
-            variant="outline"
-            size="sm"
-            className="w-full text-xs"
-            onClick={() => fileInputRef.current?.click()}
-            disabled={isUploading}
-          >
-            {isUploading ? "Uploading..." : "Upload document"}
-          </Button>
-          {uploadStatus && (
-            <p
-              className="mt-1 truncate text-xs"
-              style={{ color: "var(--foreground)", opacity: 0.6 }}
-              title={uploadStatus}
-            >
-              {uploadStatus}
-            </p>
-          )}
-        </div>
-
-        {/* Scrollable content */}
-        <div className="flex-1 space-y-4 overflow-y-auto px-2 pb-4">
-          {/* Collections */}
-          {collections.length > 0 && (
-            <section>
-              <p
-                className="px-2 py-1 text-xs font-medium uppercase tracking-wide"
-                style={{ color: "var(--foreground)", opacity: 0.45 }}
-              >
-                Collections
-              </p>
-              <ul className="space-y-0.5">
-                <li>
-                  <button
-                    onClick={() => setSelectedCollectionId(null)}
-                    className={cn(
-                      "w-full rounded px-2 py-1.5 text-left text-xs transition-colors",
-                      selectedCollectionId === null
-                        ? "bg-indigo-600/20 font-medium text-indigo-400"
-                        : "hover:bg-white/5"
-                    )}
-                    style={
-                      selectedCollectionId !== null
-                        ? { color: "var(--foreground)", opacity: 0.7 }
-                        : {}
-                    }
-                  >
-                    All documents
-                  </button>
-                </li>
-                {(collections as Collection[]).map((c) => (
-                  <li key={c.id}>
-                    <button
-                      onClick={() =>
-                        setSelectedCollectionId(
-                          selectedCollectionId === c.id ? null : c.id
-                        )
-                      }
-                      className={cn(
-                        "w-full truncate rounded px-2 py-1.5 text-left text-xs transition-colors",
-                        selectedCollectionId === c.id
-                          ? "bg-indigo-600/20 font-medium text-indigo-400"
-                          : "hover:bg-white/5"
-                      )}
-                      style={
-                        selectedCollectionId !== c.id
-                          ? { color: "var(--foreground)", opacity: 0.7 }
-                          : {}
-                      }
-                    >
-                      {c.name}
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            </section>
-          )}
-
-          {/* Recent sessions */}
-          {(sessions as QASession[]).length > 0 && (
-            <section>
-              <p
-                className="px-2 py-1 text-xs font-medium uppercase tracking-wide"
-                style={{ color: "var(--foreground)", opacity: 0.45 }}
-              >
-                Recent chats
-              </p>
-              <ul className="space-y-0.5">
-                {(sessions as QASession[]).map((s) => (
-                  <li key={s.id}>
-                    <button
-                      onClick={() => handleSelectSession(s)}
-                      className={cn(
-                        "w-full truncate rounded px-2 py-1.5 text-left text-xs transition-colors",
-                        activeSessionId === s.id
-                          ? "bg-indigo-600/20 font-medium text-indigo-400"
-                          : "hover:bg-white/5"
-                      )}
-                      style={
-                        activeSessionId !== s.id
-                          ? { color: "var(--foreground)", opacity: 0.7 }
-                          : {}
-                      }
-                    >
-                      {s.title ?? "Untitled session"}
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            </section>
-          )}
-        </div>
-
-        {/* User footer */}
-        <div
-          className="px-4 py-3"
-          style={{ borderTop: "1px solid var(--border-subtle)" }}
-        >
-          <p
-            className="truncate text-xs"
-            style={{ color: "var(--foreground)", opacity: 0.5 }}
-          >
-            {user.email}
-          </p>
-          <button
-            onClick={handleSignOut}
-            className="mt-1 text-xs transition-opacity hover:opacity-70"
-            style={{ color: "var(--foreground)", opacity: 0.4 }}
-          >
-            Sign out
-          </button>
-        </div>
-      </aside>
-
-      {/* -- Main chat area -- */}
-      <main className="flex flex-1 flex-col overflow-hidden">
-        {/* Header */}
-        <header
-          className="flex items-center px-6 py-3"
-          style={{ borderBottom: "1px solid var(--border-subtle)" }}
-        >
-          <div>
-            <h1 className="text-sm font-medium">
-              {activeSessionId ? "Continuing session" : "New chat"}
-            </h1>
-            {selectedCollectionId && (
-              <p
-                className="text-xs"
-                style={{ color: "var(--foreground)", opacity: 0.5 }}
-              >
-                {"Collection: " +
-                  ((collections as Collection[]).find(
-                    (c) => c.id === selectedCollectionId
-                  )?.name ?? "")}
-              </p>
-            )}
+    <div className="flex min-h-screen flex-col bg-[var(--background)] text-[var(--text)]">
+      <header className="flex items-center justify-between border-b border-[var(--border)] bg-[var(--card)] px-6 py-4">
+        <div className="flex items-center gap-2">
+          <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-[var(--border)]">
+            <span className="text-xs font-semibold text-[var(--accent)]">DM</span>
           </div>
-        </header>
-
-        {/* Messages */}
-        <div className="flex-1 space-y-6 overflow-y-auto px-6 py-4">
-          {messages.length === 0 && !isAsking && (
-            <div className="flex h-full flex-col items-center justify-center gap-2 text-center">
-              <p
-                className="text-lg font-medium"
-                style={{ color: "var(--foreground)", opacity: 0.7 }}
-              >
-                Ask anything about your documents
-              </p>
-              <p
-                className="text-sm"
-                style={{ color: "var(--foreground)", opacity: 0.4 }}
-              >
-                Upload a document from the sidebar, then ask a question below.
-              </p>
-            </div>
-          )}
-
-          {messages.map((msg, i) => (
-            <div
-              key={i}
-              className={cn(
-                "flex gap-3",
-                msg.role === "user" ? "justify-end" : "justify-start"
-              )}
+          <div className="flex flex-col">
+            <h1 className="text-sm font-semibold tracking-tight">DocuMind</h1>
+            <p className="text-xs text-[var(--text-muted)]">
+              Ask questions grounded in your documents.
+            </p>
+          </div>
+        </div>
+        <div className="flex items-center gap-3 text-xs text-[var(--text-muted)]">
+          {user ? (
+            <>
+              <span className="hidden sm:inline">{user.email}</span>
+              <div className="flex h-8 w-8 items-center justify-center rounded-full border border-[var(--border)] bg-[var(--card)] text-xs font-semibold text-[var(--accent)]">
+                {(user.email?.[0] ?? "U").toUpperCase()}
+              </div>
+            </>
+          ) : (
+            <Button
+              size="sm"
+              onClick={() => router.push("/login")}
             >
-              {msg.role === "assistant" && (
-                <div className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-indigo-600 text-xs font-bold text-white">
-                  D
-                </div>
-              )}
+              Sign in
+            </Button>
+          )}
+        </div>
+      </header>
 
-              <div
-                className="max-w-2xl rounded-xl px-4 py-3 text-sm"
-                style={
-                  msg.role === "user"
-                    ? { background: "#4f46e5", color: "#fff" }
-                    : {
-                        background: "var(--accent-soft)",
-                        color: "var(--foreground)",
-                        border: "1px solid var(--border-subtle)",
-                      }
-                }
+      <main className="flex flex-1 gap-0 overflow-hidden">
+        {/* Left sidebar: collections & sessions */}
+        <aside
+          className="flex w-72 flex-col border-r border-[var(--border)] bg-[var(--surface)]"
+        >
+          <div className="px-4 py-3">
+            <h2 className="text-xs font-semibold uppercase tracking-wide text-[var(--text-muted)]">
+              Collections
+            </h2>
+            <div className="mt-2 space-y-1">
+              <button
+                type="button"
+                className={cn(
+                  "w-full rounded-md px-2 py-1 text-left text-xs transition",
+                  selectedCollectionId === null
+                    ? "bg-[var(--accent)] text-white"
+                    : "hover:bg-[var(--hover)] text-[var(--text-muted)]"
+                )}
+                onClick={() => setSelectedCollectionId(null)}
               >
-                <p className="whitespace-pre-wrap leading-relaxed">{msg.content}</p>
-
-                {msg.citations && msg.citations.length > 0 && (
-                  <div
-                    className="mt-3 space-y-2 pt-3"
-                    style={{ borderTop: "1px solid rgba(255,255,255,0.12)" }}
-                  >
-                    <p className="text-xs font-medium" style={{ opacity: 0.65 }}>
-                      Sources
-                    </p>
-                    {msg.citations.slice(0, 3).map((c, ci) => (
-                      <div
-                        key={ci}
-                        className="rounded-lg px-3 py-2 text-xs"
-                        style={{ background: "rgba(0,0,0,0.18)" }}
-                      >
-                        {c.title && (
-                          <p className="mb-0.5 font-medium">
-                            {c.title +
-                              (c.page != null ? " p. " + String(c.page) : "") +
-                              (c.section ? " - " + c.section : "")}
-                          </p>
-                        )}
-                        <p className="line-clamp-2 leading-relaxed opacity-80">
-                          {c.chunk_text}
-                        </p>
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                {msg.confidence && (
-                  <p className="mt-2 text-xs" style={{ opacity: 0.45 }}>
-                    {"Confidence: " + msg.confidence}
-                  </p>
-                )}
-              </div>
-
-              {msg.role === "user" && (
-                <div
-                  className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full text-xs font-bold"
-                  style={{ background: "rgba(255,255,255,0.1)" }}
+                All documents
+              </button>
+              {collections.map((c: Collection) => (
+                <button
+                  key={c.id}
+                  type="button"
+                  className={cn(
+                    "w-full rounded-md px-2 py-1 text-left text-xs transition",
+                    selectedCollectionId === c.id
+                      ? "bg-[var(--accent)] text-white"
+                      : "hover:bg-[var(--hover)] text-[var(--text-muted)]"
+                  )}
+                  onClick={() =>
+                    setSelectedCollectionId((prev) => (prev === c.id ? null : c.id))
+                  }
                 >
-                  {(user.email?.[0] ?? "U").toUpperCase()}
-                </div>
+                  {c.name}
+                </button>
+              ))}
+              {collections.length === 0 && (
+                <p className="mt-1 text-xs text-[var(--text-muted)]">
+                  No collections yet.
+                </p>
               )}
             </div>
-          ))}
+          </div>
 
-          {/* Typing indicator */}
-          {isAsking && (
-            <div className="flex gap-3 justify-start">
-              <div className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-indigo-600 text-xs font-bold text-white">
-                D
-              </div>
-              <div
-                className="rounded-xl px-4 py-3"
-                style={{
-                  background: "var(--accent-soft)",
-                  border: "1px solid var(--border-subtle)",
+          <div className="px-4 py-3 border-t border-[var(--border)]">
+            <h2 className="text-xs font-semibold uppercase tracking-wide text-[var(--text-muted)]">
+              Sessions
+            </h2>
+            <div className="mt-2 space-y-1">
+              <button
+                type="button"
+                className="w-full rounded-md px-2 py-1 text-left text-xs text-[var(--text-muted)] hover:bg-[var(--hover)]"
+                onClick={() => {
+                  setActiveSessionId(null);
+                  setMessages([]);
                 }}
               >
-                <div className="flex items-center gap-1.5">
-                  <span
-                    className="h-1.5 w-1.5 rounded-full bg-gray-400 animate-bounce"
-                    style={{ animationDelay: "0ms" }}
-                  />
-                  <span
-                    className="h-1.5 w-1.5 rounded-full bg-gray-400 animate-bounce"
-                    style={{ animationDelay: "150ms" }}
-                  />
-                  <span
-                    className="h-1.5 w-1.5 rounded-full bg-gray-400 animate-bounce"
-                    style={{ animationDelay: "300ms" }}
-                  />
-                </div>
-              </div>
+                + New session
+              </button>
+              {sessions.map((s: QASession) => (
+                <button
+                  key={s.id}
+                  type="button"
+                  className={cn(
+                    "w-full rounded-md px-2 py-1 text-left text-xs transition",
+                    activeSessionId === s.id
+                      ? "bg-[var(--accent)] text-white"
+                      : "hover:bg-[var(--hover)] text-[var(--text-muted)]"
+                  )}
+                  onClick={() => handleSelectSession(s.id)}
+                >
+                  {s.title || "Untitled session"}
+                </button>
+              ))}
+              {sessions.length === 0 && (
+                <p className="mt-1 text-xs text-[var(--text-muted)]">
+                  No sessions yet.
+                </p>
+              )}
             </div>
-          )}
-
-          {/* Error */}
-          {askError && (
-            <div
-              className="rounded-xl px-4 py-3 text-sm text-red-400"
-              style={{
-                background: "rgba(239,68,68,0.08)",
-                border: "1px solid rgba(239,68,68,0.2)",
-              }}
-            >
-              {askError}
-            </div>
-          )}
-
-          <div ref={messagesEndRef} />
-        </div>
-
-        {/* Input */}
-        <div
-          className="px-4 py-3"
-          style={{ borderTop: "1px solid var(--border-subtle)" }}
-        >
-          <div
-            className="flex items-end gap-2 rounded-xl px-3 py-2"
-            style={{
-              border: "1px solid var(--border-subtle)",
-              background: "var(--accent-soft)",
-            }}
-          >
-            <textarea
-              value={question}
-              onChange={(e) => setQuestion(e.target.value)}
-              onKeyDown={handleKeyDown}
-              placeholder="Ask a question about your documents..."
-              rows={1}
-              className="flex-1 resize-none bg-transparent text-sm outline-none"
-              style={{
-                minHeight: "1.5rem",
-                maxHeight: "8rem",
-                color: "var(--foreground)",
-              }}
-              disabled={isAsking}
-            />
-            <Button
-              onClick={handleAsk}
-              disabled={!question.trim() || isAsking}
-              size="sm"
-              className="flex-shrink-0"
-            >
-              Send
-            </Button>
           </div>
-          <p
-            className="mt-1.5 text-center text-xs"
-            style={{ color: "var(--foreground)", opacity: 0.28 }}
-          >
-            Enter to send - Shift+Enter for newline
-          </p>
-        </div>
+        </aside>
+
+        {/* Chat area */}
+        <section className="flex flex-1 flex-col bg-[var(--background)]">
+          <div className="flex-1 overflow-y-auto px-4 py-4">
+            <div className="mx-auto max-w-3xl space-y-4">
+              {uploadStatus && (
+                <div className="rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-xs text-[var(--text-muted)]">
+                  {uploadStatus}
+                </div>
+              )}
+
+              {messages.map((msg, idx) => (
+                <div
+                  key={idx}
+                  className={cn(
+                    "flex gap-3",
+                    msg.role === "assistant" ? "justify-start" : "justify-end"
+                  )}
+                >
+                  {msg.role === "assistant" && (
+                    <div className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full border border-[var(--border)] bg-[var(--card)] text-xs font-semibold text-[var(--accent)]">
+                      D
+                    </div>
+                  )}
+
+                  <div
+                    className="max-w-[80%] rounded-lg border border-[var(--border)] bg-[var(--card)] px-4 py-3 text-sm leading-relaxed"
+                  >
+                    <p>{msg.content}</p>
+
+                    {msg.citations && msg.citations.length > 0 && (
+                      <div className="mt-3 space-y-2 border-top border-[var(--border)] pt-3">
+                        <p className="text-xs font-medium text-[var(--text-muted)]">
+                          Sources
+                        </p>
+                        {msg.citations.slice(0, 3).map((c, ci) => (
+                          <div
+                            key={ci}
+                            className="rounded-md bg-[var(--surface)] px-3 py-2 text-xs"
+                          >
+                            {c.title && (
+                              <p className="mb-0.5 font-medium">
+                                {c.title +
+                                  (c.page != null ? " p. " + String(c.page) : "") +
+                                  (c.section ? " - " + c.section : "")}
+                              </p>
+                            )}
+                            <p className="line-clamp-2 text-[var(--text-muted)]">
+                              {c.chunk_text}
+                            </p>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {msg.confidence && (
+                      <p className="mt-2 text-xs text-[var(--text-muted)]">
+                        {"Confidence: " + msg.confidence}
+                      </p>
+                    )}
+                  </div>
+
+                  {msg.role === "user" && (
+                    <div className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full border border-[var(--border)] bg-[var(--card)] text-xs font-semibold text-[var(--accent)]">
+                      {(user?.email?.[0] ?? "U").toUpperCase()}
+                    </div>
+                  )}
+                </div>
+              ))}
+
+              {isAsking && (
+                <div className="flex gap-3 justify-start">
+                  <div className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full border border-[var(--border)] bg-[var(--card)] text-xs font-semibold text-[var(--accent)]">
+                    D
+                  </div>
+                  <div className="rounded-lg border border-[var(--border)] bg-[var(--card)] px-4 py-3">
+                    <div className="flex items-center gap-1.5">
+                      <span className="h-1.5 w-1.5 rounded-full bg-[var(--text-muted)] animate-bounce" />
+                      <span className="h-1.5 w-1.5 rounded-full bg-[var(--text-muted)] animate-bounce" />
+                      <span className="h-1.5 w-1.5 rounded-full bg-[var(--text-muted)] animate-bounce" />
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {askError && (
+                <div className="rounded-lg border border-[var(--border)] bg-[var(--surface)] px-4 py-3 text-sm text-red-600">
+                  {askError}
+                </div>
+              )}
+
+              <div ref={messagesEndRef} />
+            </div>
+          </div>
+
+          {/* Input + upload */}
+          <div className="border-t border-[var(--border)] bg-[var(--card)] px-4 py-3">
+            <div className="mx-auto flex max-w-3xl items-end gap-2 rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2">
+              <textarea
+                value={question}
+                onChange={(e) => setQuestion(e.target.value)}
+                onKeyDown={handleKeyDown}
+                placeholder="Ask a question about your documents..."
+                rows={1}
+                className="flex-1 resize-none bg-transparent text-sm outline-none"
+              />
+              <Button
+                size="sm"
+                onClick={handleAsk}
+                disabled={!question.trim() || isAsking}
+              >
+                Send
+              </Button>
+              <Button
+                size="sm"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={isUploading}
+              >
+                {isUploading ? "Uploading…" : "Upload"}
+              </Button>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".pdf,.docx,.txt,.md"
+                className="hidden"
+                onChange={handleUpload}
+              />
+            </div>
+            <p className="mt-1.5 text-center text-xs text-[var(--text-muted)]">
+              Enter to send · Shift+Enter for newline
+            </p>
+          </div>
+        </section>
       </main>
+
+      {/* Empty state hint */}
+      {!messages.length && !askError && !isUploading && !uploadStatus && (
+        <div className="pointer-events-none fixed inset-x-0 bottom-6 flex justify-center">
+          <div className="rounded-lg border border-[var(--border)] bg-[var(--card)] px-4 py-2 text-xs text-[var(--text-muted)] shadow-subtle">
+            Upload a document to begin, then ask a question.
+          </div>
+        </div>
+      )}
     </div>
   );
 }

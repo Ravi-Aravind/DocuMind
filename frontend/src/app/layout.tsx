@@ -5,13 +5,13 @@ import { Providers } from "@/components/providers";
 
 export const metadata: Metadata = {
   title: "DocuMind",
-  description: "Academic RAG platform",
+  description: "Minimal academic RAG assistant",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body className="min-h-screen bg-background text-foreground antialiased">
+      <body className="page-shell">
         <ThemeProvider>
           <Providers>{children}</Providers>
         </ThemeProvider>

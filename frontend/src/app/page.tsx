@@ -36,13 +36,13 @@ export default function HomePage() {
 
   const authGuard = (action: "ask" | "upload" | "session") => {
     if (!user) {
-      if (action === "ask") {
-        alert("Please sign in to ask questions.");
-      } else if (action === "upload") {
-        alert("Please sign in to upload documents.");
-      } else {
-        alert("Please sign in to view your sessions.");
-      }
+      const message =
+        action === "ask"
+          ? "Please sign in to ask questions."
+          : action === "upload"
+          ? "Please sign in to upload documents."
+          : "Please sign in to view your sessions.";
+      alert(message);
       router.push("/login");
       return false;
     }
@@ -63,13 +63,19 @@ export default function HomePage() {
     try {
       const { data } = await apiClient.post("/qa/ask", {
         question: q,
-        session_id: activeSessionId ?? undefined,
-        collection_id: selectedCollectionId ?? undefined,
+        // For now, we pass collection_name derived from selectedCollectionId if needed.
+        collection_name: selectedCollectionId ?? undefined,
       });
 
-      const citations: SourceCitation[] = Array.isArray(data.citations)
-        ? data.citations
-        : [];
+      const sources = Array.isArray(data.sources) ? data.sources : [];
+      const citations: SourceCitation[] = sources.map((s: any) => ({
+        document_id: s.document_id,
+        chunk_text: s.snippet,
+        score: s.score,
+        page: s.page,
+        section: s.section,
+        title: s.document_title,
+      }));
 
       setMessages((prev) => [
         ...prev,
@@ -80,10 +86,6 @@ export default function HomePage() {
           confidence: data.confidence,
         },
       ]);
-
-      if (data.session_id && !activeSessionId) {
-        setActiveSessionId(data.session_id);
-      }
     } catch (err: unknown) {
       const msg =
         err instanceof Error
@@ -94,7 +96,7 @@ export default function HomePage() {
     } finally {
       setIsAsking(false);
     }
-  }, [question, isAsking, activeSessionId, selectedCollectionId, router, user]);
+  }, [question, isAsking, selectedCollectionId, router, user]);
 
   const handleUpload = useCallback(
     async (file: File) => {
@@ -166,7 +168,7 @@ export default function HomePage() {
           ? data.messages.map((m: any) => ({
               role: m.role,
               content: m.content,
-              citations: m.citations,
+              citations: [],
               confidence: m.confidence,
             }))
           : [];
@@ -179,30 +181,81 @@ export default function HomePage() {
   );
 
   return (
-    <div className="flex h-screen bg-[#0d0d0d] overflow-hidden">
-      <Sidebar
-        activeSessionId={activeSessionId}
-        onSelectSession={handleSelectSession}
-        onNewChat={() => {
-          setMessages([]);
-          setActiveSessionId(null);
-          setQuestion("");
-        }}
-        collapsed={sidebarCollapsed}
-      />
-      <div className="flex min-w-0 flex-1 flex-col">
-        <MainChatArea
-          question={question}
-          setQuestion={setQuestion}
-          messages={messages}
-          isAsking={isAsking}
-          onAsk={handleAsk}
-          onUpload={handleUpload}
-          isUploading={isUploading}
-          uploadStatus={uploadStatus ?? askError ?? undefined}
-          onToggleSidebar={() => setSidebarCollapsed((c) => !c)}
+    <div className="flex min-h-screen bg-[var(--background)] text-[var(--text)]">
+      {/* Sidebar */}
+      <aside
+        className="flex h-screen flex-col border-r border-[var(--border)] bg-[var(--surface)]"
+        style={{ width: sidebarCollapsed ? 72 : 260 }}
+      >
+        <Sidebar
+          activeSessionId={activeSessionId}
+          onSelectSession={handleSelectSession}
+          onNewChat={() => {
+            setMessages([]);
+            setActiveSessionId(null);
+            setQuestion("");
+          }}
+          collapsed={sidebarCollapsed}
         />
-      </div>
+      </aside>
+
+      {/* Main area */}
+      <main className="flex flex-1 flex-col">
+        {/* Header */}
+        <header className="flex items-center justify-between border-b border-[var(--border)] bg-[var(--card)] px-6 py-4">
+          <div className="flex items-center gap-3">
+            <div className="flex h-8 w-8 items-center justify-center rounded-xl border border-[var(--border)]">
+              <span className="text-xs font-semibold text-[var(--accent)]">
+                DM
+              </span>
+            </div>
+            <div className="flex flex-col">
+              <span className="text-sm font-semibold tracking-tight">
+                DocuMind
+              </span>
+              <span className="text-xs text-[var(--text-muted)]">
+                Academic RAG assistant
+              </span>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-3">
+            {user ? (
+              <>
+                <span className="hidden text-xs text-[var(--text-muted)] sm:inline">
+                  {user.email}
+                </span>
+                <div className="flex h-8 w-8 items-center justify-center rounded-full border border-[var(--border)] bg-[var(--card)] text-xs font-semibold text-[var(--accent)]">
+                  {(user.email?.[0] ?? "U").toUpperCase()}
+                </div>
+              </>
+            ) : (
+              <button
+                type="button"
+                className="rounded-lg border border-[var(--border)] bg-[var(--card)] px-3 py-1.5 text-xs text-[var(--text-muted)] hover:bg-[var(--hover)]"
+                onClick={() => router.push("/login")}
+              >
+                Sign in
+              </button>
+            )}
+          </div>
+        </header>
+
+        {/* Chat area */}
+        <div className="flex flex-1 flex-col">
+          <MainChatArea
+            question={question}
+            setQuestion={setQuestion}
+            messages={messages}
+            isAsking={isAsking}
+            onAsk={handleAsk}
+            onUpload={handleUpload}
+            isUploading={isUploading}
+            uploadStatus={uploadStatus ?? askError ?? undefined}
+            onToggleSidebar={() => setSidebarCollapsed((c) => !c)}
+          />
+        </div>
+      </main>
     </div>
   );
 }

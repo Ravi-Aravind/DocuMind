@@ -1,4 +1,6 @@
-﻿import mimetypes
+﻿from __future__ import annotations
+
+import mimetypes
 import os
 import uuid
 from pathlib import Path
@@ -9,6 +11,11 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.db.models import Document, User
+from backend.app.rag.qdrant_client import (
+    delete_document_vectors,
+    update_document_collection,
+)
+from backend.app.config import settings
 
 ALLOWED_EXTENSIONS = {".pdf", ".docx", ".txt", ".md"}
 ALLOWED_MIME_TYPES = {
@@ -37,7 +44,6 @@ async def _validate_file(file: UploadFile) -> None:
     if file.content_type not in ALLOWED_MIME_TYPES:
         raise ValueError("Unsupported MIME type")
 
-    # Read limited bytes to enforce max size
     file_size = 0
     chunk = await file.read(1024 * 1024)
     while chunk:
@@ -100,7 +106,7 @@ async def get_document(db: AsyncSession, user: User, document_id: uuid.UUID) -> 
 
 
 async def delete_document(db: AsyncSession, user: User, document: Document) -> None:
-    # Delete file directory if present
+    """Delete a document and its stored files and vectors for the authenticated user."""
     doc_dir = UPLOAD_ROOT / str(user.id) / str(document.id)
     if doc_dir.exists():
         for root, dirs, files in os.walk(doc_dir, topdown=False):
@@ -110,5 +116,38 @@ async def delete_document(db: AsyncSession, user: User, document: Document) -> N
                 os.rmdir(Path(root) / name)
         os.rmdir(doc_dir)
 
+    # Delete vectors from Qdrant (idempotent)
+    if document.vector_collection:
+        delete_document_vectors(
+            collection_name=document.vector_collection,
+            document_id=document.id,
+        )
+
     await db.delete(document)
     await db.commit()
+
+
+async def move_document_to_collection(
+    db: AsyncSession,
+    user: User,
+    document: Document,
+    new_collection_id: uuid.UUID | None,
+) -> Document:
+    """Move a document to another collection and update Qdrant payload."""
+    if document.owner_id != user.id:
+        raise ValueError("Document does not belong to current user")
+
+    old_collection = document.collection_id
+    document.collection_id = new_collection_id
+    await db.commit()
+    await db.refresh(document)
+
+    # Update Qdrant payloads for this document
+    if document.vector_collection and old_collection != new_collection_id:
+        update_document_collection(
+            collection_name=document.vector_collection,
+            document_id=document.id,
+            new_collection_id=new_collection_id,
+        )
+
+    return document

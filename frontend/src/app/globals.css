@@ -1,14 +1,15 @@
-@import url("https://rsms.me/inter/inter.css");
+@import "tailwindcss";
 
 :root {
   --background: #ffffff;
-  --surface: #f8f8f8;
+  --surface: #fafafa;
   --card: #ffffff;
   --border: #e5e5e5;
   --text: #111111;
-  --text-muted: #666666;
+  --text-muted: #6b7280;
   --accent: #000000;
-  --hover: #f2f2f2;
+  --danger: #dc2626;
+  --success: #16a34a;
 
   --radius-lg: 12px;
   --radius-xl: 16px;
@@ -16,16 +17,15 @@
   --shadow-subtle: 0 10px 30px rgba(0, 0, 0, 0.06);
 }
 
-/* Dark mode variables */
+/* Dark mode placeholders (hooked to theme provider later) */
 [data-theme="dark"] {
   --background: #050505;
   --surface: #111111;
   --card: #181818;
   --border: #2a2a2a;
-  --text: #fefefe;
-  --text-muted: #a3a3a3;
+  --text: #f9fafb;
+  --text-muted: #9ca3af;
   --accent: #ffffff;
-  --hover: #222222;
 }
 
 html,
@@ -48,12 +48,7 @@ body {
   background: rgba(0, 0, 0, 0.08);
 }
 
-a {
-  color: inherit;
-  text-decoration: none;
-}
-
-/* Scrollbar */
+/* Scrollbars */
 ::-webkit-scrollbar {
   width: 8px;
   height: 8px;
@@ -68,7 +63,7 @@ a {
   border-radius: 999px;
 }
 
-/* General utility classes */
+/* Utilities */
 .page-shell {
   min-height: 100vh;
   background-color: var(--background);
@@ -94,4 +89,23 @@ a {
 :focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
+}
+
+textarea {
+    appearance: none;
+    -webkit-appearance: none;
+
+    border: none;
+    outline: none;
+
+    box-shadow: none;
+
+    background: transparent;
+}
+
+textarea:focus {
+    border: none;
+    outline: none;
+
+    box-shadow: none;
 }

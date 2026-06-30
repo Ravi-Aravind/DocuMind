@@ -4,8 +4,8 @@ import React, { useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/context/auth-context";
 import { apiClient } from "@/lib/api";
-import Sidebar from "@/components/layout/sidebar";
-import MainChatArea, { type ChatMessage } from "@/components/chat/main-chat-area";
+import Sidebar from "@/components/layout/sidebar/Sidebar";
+import MainChatArea, { type ChatMessage } from "@/components/chat/MainChatArea";
 
 type SourceCitation = {
   document_id: string;
@@ -63,7 +63,6 @@ export default function HomePage() {
     try {
       const { data } = await apiClient.post("/qa/ask", {
         question: q,
-        // For now, we pass collection_name derived from selectedCollectionId if needed.
         collection_name: selectedCollectionId ?? undefined,
       });
 
@@ -181,11 +180,11 @@ export default function HomePage() {
   );
 
   return (
-    <div className="flex min-h-screen bg-[var(--background)] text-[var(--text)]">
-      {/* Sidebar */}
+    <div className="h-screen w-screen overflow-hidden bg-[#212121] text-[#ECECEC]">
+      {/* Fixed Sidebar */}
       <aside
-        className="flex h-screen flex-col border-r border-[var(--border)] bg-[var(--surface)]"
-        style={{ width: sidebarCollapsed ? 72 : 260 }}
+        className="fixed left-0 top-0 z-50 h-screen border-r border-[#2A2A2A] bg-[#111111]"
+        style={{ width: sidebarCollapsed ? 72 : 280 }}
       >
         <Sidebar
           activeSessionId={activeSessionId}
@@ -199,62 +198,24 @@ export default function HomePage() {
         />
       </aside>
 
-      {/* Main area */}
-      <main className="flex flex-1 flex-col">
-        {/* Header */}
-        <header className="flex items-center justify-between border-b border-[var(--border)] bg-[var(--card)] px-6 py-4">
-          <div className="flex items-center gap-3">
-            <div className="flex h-8 w-8 items-center justify-center rounded-xl border border-[var(--border)]">
-              <span className="text-xs font-semibold text-[var(--accent)]">
-                DM
-              </span>
-            </div>
-            <div className="flex flex-col">
-              <span className="text-sm font-semibold tracking-tight">
-                DocuMind
-              </span>
-              <span className="text-xs text-[var(--text-muted)]">
-                Academic RAG assistant
-              </span>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-3">
-            {user ? (
-              <>
-                <span className="hidden text-xs text-[var(--text-muted)] sm:inline">
-                  {user.email}
-                </span>
-                <div className="flex h-8 w-8 items-center justify-center rounded-full border border-[var(--border)] bg-[var(--card)] text-xs font-semibold text-[var(--accent)]">
-                  {(user.email?.[0] ?? "U").toUpperCase()}
-                </div>
-              </>
-            ) : (
-              <button
-                type="button"
-                className="rounded-lg border border-[var(--border)] bg-[var(--card)] px-3 py-1.5 text-xs text-[var(--text-muted)] hover:bg-[var(--hover)]"
-                onClick={() => router.push("/login")}
-              >
-                Sign in
-              </button>
-            )}
-          </div>
-        </header>
-
-        {/* Chat area */}
-        <div className="flex flex-1 flex-col">
-          <MainChatArea
-            question={question}
-            setQuestion={setQuestion}
-            messages={messages}
-            isAsking={isAsking}
-            onAsk={handleAsk}
-            onUpload={handleUpload}
-            isUploading={isUploading}
-            uploadStatus={uploadStatus ?? askError ?? undefined}
-            onToggleSidebar={() => setSidebarCollapsed((c) => !c)}
-          />
-        </div>
+      {/* Main Chat Area */}
+      <main
+        className="h-screen overflow-hidden"
+        style={{
+          marginLeft: sidebarCollapsed ? 72 : 280,
+        }}
+      >
+        <MainChatArea
+          question={question}
+          setQuestion={setQuestion}
+          messages={messages}
+          isAsking={isAsking}
+          onAsk={handleAsk}
+          onUpload={handleUpload}
+          isUploading={isUploading}
+          uploadStatus={uploadStatus ?? askError ?? undefined}
+          onToggleSidebar={() => setSidebarCollapsed((c) => !c)}
+        />
       </main>
     </div>
   );

@@ -13,6 +13,7 @@ import { useCollections, useQASessions } from "@/lib/hooks";
 import type { Collection, QASession } from "@/lib/hooks";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { BrandAvatar } from "@/constants/BrandAvatar";
 
 type SourceCitation = {
   document_id: string;
@@ -214,7 +215,7 @@ export default function AskPage() {
       <header className="flex items-center justify-between border-b border-[var(--border)] bg-[var(--card)] px-6 py-4">
         <div className="flex items-center gap-2">
           <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-[var(--border)]">
-            <span className="text-xs font-semibold text-[var(--accent)]">DM</span>
+            <span className="text-xs font-semibold text-[var(--accent)]"><BrandAvatar /></span>
           </div>
           <div className="flex flex-col">
             <h1 className="text-sm font-semibold tracking-tight">DocuMind</h1>

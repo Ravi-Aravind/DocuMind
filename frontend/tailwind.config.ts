@@ -13,13 +13,14 @@ const config: Config = {
       },
       colors: {
         background: "#FFFFFF",
-        surface: "#F8F8F8",
+        surface: "#FAFAFA",
         card: "#FFFFFF",
         border: "#E5E5E5",
         text: "#111111",
-        textMuted: "#666666",
+        textMuted: "#6B7280",
         accent: "#000000",
-        hover: "#F2F2F2",
+        danger: "#DC2626",
+        success: "#16A34A",
       },
       borderRadius: {
         lg: "12px",
@@ -27,6 +28,14 @@ const config: Config = {
       },
       boxShadow: {
         subtle: "0 10px 30px rgba(0,0,0,0.06)",
+      },
+      spacing: {
+        1: "4px",
+        2: "8px",
+        3: "12px",
+        4: "16px",
+        5: "20px",
+        6: "24px",
       },
     },
   },

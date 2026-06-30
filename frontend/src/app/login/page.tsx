@@ -2,6 +2,7 @@
 
 import { apiClient } from "../../lib/api";
 import { Button } from "@/components/ui/button";
+import { BrandAvatar } from "@/constants/BrandAvatar";
 import { motion } from "framer-motion";
 
 export default function LoginPage() {
@@ -29,7 +30,7 @@ export default function LoginPage() {
         <div className="mb-4 flex items-center gap-2">
           <div className="flex h-7 w-7 items-center justify-center rounded-lg border border-[var(--border)]">
             <span className="text-xs font-semibold text-[var(--accent)]">
-              DM
+              <BrandAvatar />
             </span>
           </div>
           <div className="flex flex-col">

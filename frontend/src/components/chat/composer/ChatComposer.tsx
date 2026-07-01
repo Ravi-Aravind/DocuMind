@@ -47,14 +47,12 @@ export function ChatComposer({
           "rounded-[30px] border border-[#3A3A3A]/60 bg-[#1C1C1C]",
           // Soft, non-modal elevation
           "shadow-[0_10px_30px_rgba(0,0,0,0.35)]",
-          // Smooth visual transitions for border/shadow (focus state)
-          // "transition-[border-color,box-shadow] duration-150 ease-out",
-          // Comfortable vertical padding
-          "flex flex-col pt-4 pb-4 sm:pt-5 sm:pb-5"
+          // Comfortable vertical padding, with a taller bottom band
+          "flex flex-col pt-4 pb-6 sm:pt-5 sm:pb-7"
         )}
       >
         {/* Content area: textarea + attached file chip */}
-        <div className="flex flex-col flex-1 gap-3 px-1 sm:px-2">
+        <div className="flex flex-col gap-4 px-1 sm:px-2">
           <PromptTextarea
             value={question}
             onChange={setQuestion}
@@ -70,8 +68,8 @@ export function ChatComposer({
           )}
         </div>
 
-        {/* Toolbar row, visually attached via whitespace (no divider) */}
-        <div className="mt-3">
+        {/* Toolbar band: vertically centers upload + send in the bottom curve */}
+        <div className="mt-1 flex flex-col justify-center">
           <ComposerToolbar
             onUpload={handleUpload}
             isUploading={isUploading}

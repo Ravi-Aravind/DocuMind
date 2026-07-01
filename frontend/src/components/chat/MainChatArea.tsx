@@ -75,7 +75,9 @@ export default function MainChatArea({
     if (!viewport) return;
 
     const distance =
-      viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight;
+      viewport.scrollHeight -
+      viewport.scrollTop -
+      viewport.clientHeight;
 
     setShowScrollButton(distance > 300);
   }, []);
@@ -90,7 +92,6 @@ export default function MainChatArea({
   return (
     <main
       className="
-        relative
         flex
         h-[100dvh]
         min-h-0
@@ -100,7 +101,7 @@ export default function MainChatArea({
         bg-[#212121]
       "
     >
-      {/* ================= Conversation ================= */}
+      {/* ================= Messages ================= */}
 
       <div
         ref={viewportRef}
@@ -116,16 +117,19 @@ export default function MainChatArea({
             mx-auto
             w-full
             max-w-4xl
+
             px-8
+
             pt-10
-            pb-56
+
+            pb-12
           "
         >
           {isEmpty ? (
             <div
               className="
                 flex
-                min-h-[calc(100dvh-220px)]
+                min-h-[calc(100dvh-260px)]
                 items-center
                 justify-center
                 -translate-y-6
@@ -157,19 +161,27 @@ export default function MainChatArea({
             bottom-40
             right-8
             z-30
+
             flex
             h-11
             w-11
             items-center
             justify-center
+
             rounded-full
+
             border
             border-[#404040]
+
             bg-[#2B2B2B]
+
             text-white
+
             shadow-lg
+
             transition-all
             duration-200
+
             hover:bg-[#383838]
           "
         >
@@ -181,19 +193,10 @@ export default function MainChatArea({
 
       <div
         className="
-          sticky
-          bottom-0
-          z-20
-          bg-[#212121]/95
-          backdrop-blur-xl
-          before:absolute
-          before:left-0
-          before:right-0
-          before:top-0
-          before:h-8
-          before:bg-gradient-to-t
-          before:from-[#212121]
-          before:to-transparent
+          shrink-0
+          border-[#2F2F2F]
+
+          bg-[#212121]
         "
       >
         <div
@@ -201,9 +204,10 @@ export default function MainChatArea({
             mx-auto
             w-full
             max-w-4xl
+
             px-8
-            pb-8
-            pt-4
+
+            py-6
           "
         >
           <ChatComposer

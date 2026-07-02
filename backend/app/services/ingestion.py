@@ -20,43 +20,41 @@ from backend.app.rag.qdrant_client import (
     ensure_collection,
     upsert_document_chunks,
 )
-from backend.app.services.document_service import UPLOAD_ROOT
 from backend.app.config import settings
 from arq import ArqRedis
 import asyncio
 
-
-def _load_document_file(doc: Document) -> Path:
-    """Locate the uploaded file path for a given document."""
-    user_dir = UPLOAD_ROOT / str(doc.owner_id)
-    doc_dir = user_dir / str(doc.id)
-
-    if not doc_dir.exists():
-        raise FileNotFoundError(f"Document directory not found: {doc_dir}")
-
-    files = list(doc_dir.iterdir())
-    if not files:
-        raise FileNotFoundError(f"No files found for document: {doc.id}")
-    return files[0]
+from backend.app.services.storage import get_storage_backend
 
 
-async def _parse_file(path: Path, content_type: Optional[str]) -> ParsedDocument:
+async def _load_document_file(doc: Document) -> bytes:
+    """Retrieve the uploaded file bytes from the configured storage backend."""
+    storage = get_storage_backend()
+    storage_key = None
+    if doc.extra_metadata:
+        storage_key = doc.extra_metadata.get("storage_key")
+    if not storage_key:
+        raise FileNotFoundError(f"No storage key found for document: {doc.id}")
+    return await storage.get_bytes(storage_key)
+
+
+async def _parse_file(file_bytes: bytes, filename: str, content_type: Optional[str]) -> ParsedDocument:
     """Dispatch to the correct parser based on content type / extension."""
-    ext = path.suffix.lower()
+    ext = Path(filename).suffix.lower()
     mime = content_type or ""
 
     if ext == ".pdf" or mime == "application/pdf":
         parser = PDFParser()
-        return await parser.parse(path)
+        return await parser.parse_bytes(file_bytes, filename)
     if ext == ".docx" or mime == "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
         parser = DOCXParser()
-        return await parser.parse(path)
+        return await parser.parse_bytes(file_bytes, filename)
     if ext in {".txt"} or mime == "text/plain":
         parser = TXTParser()
-        return await parser.parse(path)
+        return await parser.parse_bytes(file_bytes, filename)
     if ext in {".md", ".markdown"} or mime == "text/markdown":
         parser = MarkdownParser()
-        return await parser.parse(path)
+        return await parser.parse_bytes(file_bytes, filename)
 
     raise ValueError(f"Unsupported document type: {ext} ({mime})")
 
@@ -100,8 +98,8 @@ async def ingest_document(db: AsyncSession, document_id) -> None:
     await db.refresh(doc)
 
     try:
-        file_path = _load_document_file(doc)
-        parsed = await _parse_file(file_path, doc.content_type)
+        file_bytes = await _load_document_file(doc)
+        parsed = await _parse_file(file_bytes, doc.original_filename, doc.content_type)
 
         chunks = chunk_document(parsed)
         if not chunks:

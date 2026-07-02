@@ -77,42 +77,40 @@ async def request_id_middleware(request: Request, call_next):
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    """Application lifespan: initialize redis and pyrate-limiter buckets.
+
+    Older code passed bucket_class/bucket_kwargs to Limiter
+    which is not supported in the installed pyrate_limiter package.
+    Instead we create RedisBucket instances (awaiting their async
+    initializer when necessary) and pass the concrete bucket to
+    Limiter (which accepts an AbstractBucket).
+    """
     redis = aioredis.from_url(settings.redis_url, encoding="utf-8", decode_responses=True)
     app.state.redis = redis
-    app.state.rate_limiters = {
-        "qa": Limiter(
-            [Rate(settings.qa_rate_limit_requests, Duration.SECOND * settings.qa_rate_limit_window_seconds)],
-            bucket_class=RedisBucket,
-            bucket_kwargs={"redis": redis, "bucket_key": "qa-rate-limit"},
-        ),
-        "upload": Limiter(
-            [Rate(settings.upload_rate_limit_requests, Duration.SECOND * settings.upload_rate_limit_window_seconds)],
-            bucket_class=RedisBucket,
-            bucket_kwargs={"redis": redis, "bucket_key": "upload-rate-limit"},
-        ),
-    }
-    yield
-    await redis.close()
 
+    # Prepare rate definitions
+    qa_rates = [Rate(settings.qa_rate_limit_requests, Duration.SECOND * settings.qa_rate_limit_window_seconds)]
+    upload_rates = [Rate(settings.upload_rate_limit_requests, Duration.SECOND * settings.upload_rate_limit_window_seconds)]
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    redis = aioredis.from_url(settings.redis_url, encoding="utf-8", decode_responses=True)
-    app.state.redis = redis
+    # Initialize RedisBucket instances (init may return a coroutine)
+    qa_bucket = RedisBucket.init(qa_rates, redis, "qa-rate-limit")
+    if hasattr(qa_bucket, "__await__"):
+        qa_bucket = await qa_bucket
+
+    upload_bucket = RedisBucket.init(upload_rates, redis, "upload-rate-limit")
+    if hasattr(upload_bucket, "__await__"):
+        upload_bucket = await upload_bucket
+
+    # Create Limiter objects from concrete buckets
     app.state.rate_limiters = {
-        "qa": Limiter(
-            [Rate(settings.qa_rate_limit_requests, Duration.SECOND * settings.qa_rate_limit_window_seconds)],
-            bucket_class=RedisBucket,
-            bucket_kwargs={"redis": redis, "bucket_key": "qa-rate-limit"},
-        ),
-        "upload": Limiter(
-            [Rate(settings.upload_rate_limit_requests, Duration.SECOND * settings.upload_rate_limit_window_seconds)],
-            bucket_class=RedisBucket,
-            bucket_kwargs={"redis": redis, "bucket_key": "upload-rate-limit"},
-        ),
+        "qa": Limiter(qa_bucket),
+        "upload": Limiter(upload_bucket),
     }
-    yield
-    await redis.close()
+
+    try:
+        yield
+    finally:
+        await redis.close()
 
 
 def create_app() -> FastAPI:

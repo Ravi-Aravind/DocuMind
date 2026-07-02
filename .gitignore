@@ -218,3 +218,6 @@ __marimo__/
 
 #node_modules
 node_modules/
+
+#additonal files
+uploads/

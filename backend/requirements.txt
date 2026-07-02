@@ -33,6 +33,7 @@ httpx>=0.28,<1.0
 # Rate Limiting / Redis
 fastapi-limiter>=0.2,<1.0
 redis>=5.0,<9.0
+arq>=0.25,<1.0
 
 # Document Parsing
 PyMuPDF>=1.26,<2.0

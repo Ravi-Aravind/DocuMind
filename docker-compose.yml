@@ -1,0 +1,15 @@
+version: '3.9'
+services:
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+
+  ingestion-worker:
+    build:
+      context: ./backend
+    command: python -m app.workers.ingestion_worker
+    environment:
+      REDIS_URL: redis://redis:6379/0
+    depends_on:
+      - redis

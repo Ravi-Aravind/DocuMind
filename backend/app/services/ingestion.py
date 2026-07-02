@@ -5,6 +5,7 @@ from typing import List, Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from arq import cron
 
 from backend.app.config import settings
 from backend.app.db.models.document import Document
@@ -20,6 +21,9 @@ from backend.app.rag.qdrant_client import (
     upsert_document_chunks,
 )
 from backend.app.services.document_service import UPLOAD_ROOT
+from backend.app.config import settings
+from arq import ArqRedis
+import asyncio
 
 
 def _load_document_file(doc: Document) -> Path:
@@ -55,6 +59,20 @@ async def _parse_file(path: Path, content_type: Optional[str]) -> ParsedDocument
         return await parser.parse(path)
 
     raise ValueError(f"Unsupported document type: {ext} ({mime})")
+
+
+async def run_sync_ingestion_pipeline(document_id: str) -> None:
+    """Run the document ingestion pipeline for a queued document."""
+    from backend.app.db.session import AsyncSessionLocal
+
+    async with AsyncSessionLocal() as db:
+        await ingest_document(db=db, document_id=document_id)
+
+
+async def enqueue_ingestion_job(document_id: str) -> None:
+    """Enqueue a document ingestion job in Redis using Arq."""
+    redis = ArqRedis(host=settings.redis_url.split("://", 1)[1].split("/", 1)[0].split("@")[-1].split(":")[0], port=6379)
+    await redis.enqueue_job("ingest_job", document_id)
 
 
 async def ingest_document(db: AsyncSession, document_id) -> None:

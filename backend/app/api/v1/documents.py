@@ -1,6 +1,7 @@
-﻿import uuid
+﻿import logging
+import uuid
 
-from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.db.models import Document, User
@@ -12,12 +13,13 @@ from backend.app.services.document_service import (
     get_document,
     list_documents,
 )
-from backend.app.services.ingestion import ingest_document
+from backend.app.services.ingestion import enqueue_ingestion_job
 from backend.app.dependencies import get_current_user
 from backend.app.core.rate_limit import build_rate_limiter
 from backend.app.config import settings
 
 router = APIRouter(prefix="/documents", tags=["documents"])
+logger = logging.getLogger(__name__)
 upload_rate_limiter = build_rate_limiter(
     limit=settings.upload_rate_limit_requests,
     window_seconds=settings.upload_rate_limit_window_seconds,
@@ -27,7 +29,6 @@ upload_rate_limiter = build_rate_limiter(
 
 @router.post("/upload", response_model=DocumentResponse, status_code=status.HTTP_201_CREATED)
 async def upload_document(
-    background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -39,13 +40,28 @@ async def upload_document(
     Triggers async ingestion (parse → chunk → embed → Qdrant).
     """
 
+    logger.info(
+        "document_upload_received",
+        extra={"event": "document_upload_received", "user_id": str(current_user.id), "filename": file.filename},
+    )
+
     try:
         document = await create_document(db=db, user=current_user, file=file)
     except ValueError as exc:
+        logger.warning(
+            "document_upload_rejected",
+            extra={"event": "document_upload_rejected", "user_id": str(current_user.id), "filename": file.filename, "error": str(exc)},
+        )
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
-    # Trigger ingestion in background
-    background_tasks.add_task(ingest_document, db, document.id)
+    await enqueue_ingestion_job(str(document.id))
+    logger.info(
+        "document_upload_queued",
+        extra={"event": "document_upload_queued", "user_id": str(current_user.id), "document_id": str(document.id)},
+    )
+    document.status = "queued"
+    await db.commit()
+    await db.refresh(document)
 
     return document
 
@@ -83,9 +99,15 @@ async def get_document_status(
     if not document:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
 
+    status_value = document.status
+    if status_value == "uploaded":
+        status_value = "queued"
+    elif status_value == "ready":
+        status_value = "completed"
+
     return {
         "id": str(document.id),
-        "status": document.status,
+        "status": status_value,
         "error_message": document.error_message,
         "vector_collection": document.vector_collection,
         "vector_count": document.vector_count,

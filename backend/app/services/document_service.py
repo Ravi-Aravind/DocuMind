@@ -6,6 +6,8 @@ import uuid
 from pathlib import Path
 from typing import Iterable
 
+from backend.app.services.storage import get_storage_backend
+
 from fastapi import UploadFile
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -27,6 +29,7 @@ ALLOWED_MIME_TYPES = {
 MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024  # 10 MB
 
 UPLOAD_ROOT = Path("uploads")
+storage_backend = get_storage_backend()
 
 
 def _validate_file_extension(filename: str) -> None:
@@ -66,15 +69,8 @@ async def create_document(
 
     document_id = uuid.uuid4()
 
-    user_dir = UPLOAD_ROOT / str(user.id)
-    doc_dir = user_dir / str(document_id)
-    os.makedirs(doc_dir, exist_ok=True)
-
-    file_path = doc_dir / file.filename
-
     contents = await file.read()
-    with open(file_path, "wb") as f:
-        f.write(contents)
+    key = await storage_backend.save(file_name=file.filename, contents=contents, metadata={"user_id": str(user.id), "document_id": str(document_id)})
 
     await file.seek(0)
 
@@ -85,6 +81,7 @@ async def create_document(
         content_type=file.content_type or _infer_mime_type(file.filename),
         status="uploaded",
         owner_id=user.id,
+        extra_metadata={"storage_key": key},
     )
     db.add(document)
     await db.commit()
@@ -107,14 +104,11 @@ async def get_document(db: AsyncSession, user: User, document_id: uuid.UUID) -> 
 
 async def delete_document(db: AsyncSession, user: User, document: Document) -> None:
     """Delete a document and its stored files and vectors for the authenticated user."""
-    doc_dir = UPLOAD_ROOT / str(user.id) / str(document.id)
-    if doc_dir.exists():
-        for root, dirs, files in os.walk(doc_dir, topdown=False):
-            for name in files:
-                os.remove(Path(root) / name)
-            for name in dirs:
-                os.rmdir(Path(root) / name)
-        os.rmdir(doc_dir)
+    storage_key = None
+    if document.extra_metadata:
+        storage_key = document.extra_metadata.get("storage_key")
+    if storage_key:
+        await storage_backend.delete(storage_key)
 
     # Delete vectors from Qdrant (idempotent)
     if document.vector_collection:

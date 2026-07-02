@@ -1,0 +1,42 @@
+version: '3.9'
+services:
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+
+  api:
+    build:
+      context: ./backend
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000
+    environment:
+      REDIS_URL: redis://redis:6379/0
+      STORAGE_BACKEND: ${STORAGE_BACKEND:-local}
+      STORAGE_LOCAL_ROOT: /app/uploads
+      STORAGE_S3_BUCKET: ${STORAGE_S3_BUCKET:-}
+      STORAGE_S3_ENDPOINT: ${STORAGE_S3_ENDPOINT:-}
+      STORAGE_S3_ACCESS_KEY_ID: ${STORAGE_S3_ACCESS_KEY_ID:-}
+      STORAGE_S3_SECRET_ACCESS_KEY: ${STORAGE_S3_SECRET_ACCESS_KEY:-}
+      STORAGE_S3_REGION: ${STORAGE_S3_REGION:-auto}
+      STORAGE_S3_PUBLIC_URL: ${STORAGE_S3_PUBLIC_URL:-}
+    ports:
+      - "8000:8000"
+    depends_on:
+      - redis
+
+  ingestion-worker:
+    build:
+      context: ./backend
+    command: python -m app.workers.ingestion_worker
+    environment:
+      REDIS_URL: redis://redis:6379/0
+      STORAGE_BACKEND: ${STORAGE_BACKEND:-local}
+      STORAGE_LOCAL_ROOT: /app/uploads
+      STORAGE_S3_BUCKET: ${STORAGE_S3_BUCKET:-}
+      STORAGE_S3_ENDPOINT: ${STORAGE_S3_ENDPOINT:-}
+      STORAGE_S3_ACCESS_KEY_ID: ${STORAGE_S3_ACCESS_KEY_ID:-}
+      STORAGE_S3_SECRET_ACCESS_KEY: ${STORAGE_S3_SECRET_ACCESS_KEY:-}
+      STORAGE_S3_REGION: ${STORAGE_S3_REGION:-auto}
+      STORAGE_S3_PUBLIC_URL: ${STORAGE_S3_PUBLIC_URL:-}
+    depends_on:
+      - redis

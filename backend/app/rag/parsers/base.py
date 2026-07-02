@@ -25,3 +25,6 @@ class BaseParser(Protocol):
 
     async def parse(self, path: Path) -> ParsedDocument:  # pragma: no cover - interface
         ...
+
+    async def parse_bytes(self, file_bytes: bytes, filename: str) -> ParsedDocument:  # pragma: no cover - interface
+        ...

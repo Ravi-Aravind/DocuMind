@@ -83,6 +83,39 @@ class Settings(BaseSettings):
         alias="QDRANT_URL",
     )
 
+    storage_backend: str = Field(
+        default="local",
+        alias="STORAGE_BACKEND",
+    )
+    storage_local_root: str = Field(
+        default="uploads",
+        alias="STORAGE_LOCAL_ROOT",
+    )
+    storage_s3_bucket: str = Field(
+        default="",
+        alias="STORAGE_S3_BUCKET",
+    )
+    storage_s3_endpoint: str = Field(
+        default="",
+        alias="STORAGE_S3_ENDPOINT",
+    )
+    storage_s3_access_key_id: str = Field(
+        default="",
+        alias="STORAGE_S3_ACCESS_KEY_ID",
+    )
+    storage_s3_secret_access_key: str = Field(
+        default="",
+        alias="STORAGE_S3_SECRET_ACCESS_KEY",
+    )
+    storage_s3_region: str = Field(
+        default="auto",
+        alias="STORAGE_S3_REGION",
+    )
+    storage_s3_public_url: str = Field(
+        default="",
+        alias="STORAGE_S3_PUBLIC_URL",
+    )
+
     redis_url: str = Field(
         default="redis://localhost:6379/0",
         alias="REDIS_URL",
